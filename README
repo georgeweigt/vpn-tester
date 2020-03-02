@@ -1,8 +1,10 @@
+The VPN tester runs on a server machine.
+
 Example configuration:
 
  _________________________________
 |                                 |
-|            Firewall             |
+|               DUT               |
 |                                 |
 | 172.16.0.1/16     172.17.0.1/16 |
 | LAN                         WAN |
@@ -17,7 +19,7 @@ Example configuration:
 | LAN_PORT_ID         WAN_PORT_ID |
 | 172.16.0.0/16        172.17.0.2 |
 |                                 |
-|           Dell Server           |
+|             Server              |
 |_________________________________|
 
 
