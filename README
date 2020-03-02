@@ -1,4 +1,5 @@
-The VPN tester runs on a server machine.
+Vpn-tester runs on a server machine and uses Intel DPDK for simple and fast
+access to network interface cards.
 
 Example configuration:
 
