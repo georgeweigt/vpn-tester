@@ -1,0 +1,22 @@
+shared_secret foobar
+local_id      foobar
+remote_id     foobar
+
+local_network_start  20.0.0.3
+local_network_end    20.0.0.3
+
+remote_network_start 20.0.0.2
+remote_network_end   20.0.0.2
+
+sonicwall_lan_ip 20.0.0.1
+sonicwall_wan_ip 21.0.0.1
+
+my_lan_ip 20.0.0.2
+my_wan_ip 21.0.0.2
+
+lan_interface_ip 20.0.0.2
+wan_interface_ip 21.0.0.2
+
+lan_host_ip 20.0.0.100
+wan_host_ip 21.0.0.100
+

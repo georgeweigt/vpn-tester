@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# set up drivers needed by dpdk
+
+sudo systemctl stop NetworkManager
+sudo systemctl stop firewalld
+
+sudo rmmod rte_kni
+sudo insmod ~/dpdk/x86_64-native-linuxapp-gcc/kmod/rte_kni.ko
+
+sudo rmmod igb_uio
+sudo rmmod uio
+
+sudo modprobe uio
+sudo insmod ~/dpdk/x86_64-native-linuxapp-gcc/kmod/igb_uio.ko
+sudo sysctl -w vm.nr_hugepages=512
+sudo mkdir -p /mnt/huge
+sudo mount -t hugetlbfs nodev /mnt/huge

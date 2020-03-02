@@ -1,0 +1,19 @@
+#!/bin/bash
+
+sudo pkill main
+
+sudo systemctl stop NetworkManager
+sudo systemctl stop firewalld
+
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo sysctl -w kernel.randomize_va_space=0
+
+# unbind from linux then bind to dpdk
+sudo ifconfig p2p1 down
+sudo ifconfig p2p2 down
+sudo ~/dpdk/tools/dpdk_nic_bind.py -u 0000:08:00.0
+sudo ~/dpdk/tools/dpdk_nic_bind.py -b igb_uio 0000:08:00.0
+sudo ~/dpdk/tools/dpdk_nic_bind.py -u 0000:08:00.1
+sudo ~/dpdk/tools/dpdk_nic_bind.py -b igb_uio 0000:08:00.1
+
+sudo ./build/main -c 2 -n 4 --proc-type=primary --
