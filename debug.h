@@ -41,8 +41,8 @@ printf("\nIPv4 Traffic Selector ");\
 if (dir) printf("(I)\n"); else printf("(R)\n");\
 printf("start port %d\n", buf[4] << 8 | buf[5]);\
 printf("end port %d\n", buf[6] << 8 | buf[7]);\
-printf("start addr 0x%08x\n", buf[8] << 24 | buf[9] << 16 | buf[10] << 8 | buf[11]);\
-printf("end addr 0x%08x\n", buf[12] << 24 | buf[13] << 16 | buf[14] << 8 | buf[15]);}
+printf("start addr %d.%d.%d.%d\n", buf[8], buf[9], buf[10], buf[11]);\
+printf("end addr %d.%d.%d.%d\n", buf[12], buf[13], buf[14], buf[15]);}
 
 #define PRINT_IPV6_TRAFFIC_SELECTOR if (debug) {\
 int i;\

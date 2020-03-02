@@ -1,10 +1,5 @@
 #include "defs.h"
 
-#define IDLE 0
-#define WAITING_FOR_IKE_INIT 1
-#define WAITING_FOR_IKE_AUTH 2
-#define CONNECTED 3
-
 static int buflen;
 
 // two remote machines could use same spi_i, need to match ip as well?
@@ -18,14 +13,11 @@ handle_ike(unsigned char *payload, int len)
 	unsigned long long spi_r;
 	Trace
 
-	memcpy(bigbuf, payload, len); // FIXME hack for now
+	memcpy(bigbuf, payload, len);
 	buflen = len;
-
-//	buflen = read(net_fd, bigbuf, sizeof bigbuf);
 
 #if UDP_PORT == 4500
 	if (((unsigned *) bigbuf)[0] != 0) {
-printf("**********");
 		handle_decryption_ipv6_4500(buflen);
 		return;
 	}
@@ -81,6 +73,9 @@ printf("**********");
 	case WAITING_FOR_IKE_AUTH:
 		receive_ike_auth(sa);
 		break;
+	case WAITING_FOR_IKE_CHILD_SA:
+		receive_ike_create_child_sa(sa);
+		break;
 	case CONNECTED:
 		handle_ike_connected(sa);
 		break;
@@ -107,6 +102,19 @@ receive_ike_init(struct sa *sa)
 	parse(sa, bigbuf + 4, buflen - 4);
 #endif
 
+	// check ike header values
+
+	if ((sa->flags & 0x20) == 0)
+		return; // response bit is not set (see RFC 5996, p. 72)
+
+	if (sa->receive_msg_id != sa->send_msg_id)
+		return;
+
+	sa->send_msg_id++; // response received
+
+	if (sa->exchange_type != IKE_INIT)
+		return; // error
+
 	compute_secret_key(sa);
 	generate_keys(sa);
 	init_ike_aes(sa);
@@ -128,6 +136,20 @@ receive_ike_auth(struct sa *sa)
 #else
 	parse(sa, bigbuf + 4, buflen - 4);
 #endif
+
+	// check ike header values
+
+	if ((sa->flags & 0x20) == 0)
+		return; // response bit is not set (see RFC 5996, p. 72)
+
+	if (sa->receive_msg_id != sa->send_msg_id)
+		return;
+
+	sa->send_msg_id++;
+
+	if (sa->exchange_type != IKE_AUTH)
+		return; // protocol error
+
 	check_auth(sa);
 
 	if (sa->auth_ok == 0)
@@ -146,6 +168,51 @@ receive_ike_auth(struct sa *sa)
 
 	sa->send_seq = 0;
 	sa->receive_seq = 0;
+
+	sa->state = CONNECTED;
+}
+
+// sent CREATE_CHILD_SA, now process reply
+
+void
+receive_ike_create_child_sa(struct sa *sa)
+{
+	int k;
+	Trace
+
+#if UDP_PORT == 500 || 1
+	parse(sa, bigbuf, buflen);
+#else
+	parse(sa, bigbuf + 4, buflen - 4);
+#endif
+
+	// check ike header values
+
+	if ((sa->flags & 0x20) == 0)
+		return; // response bit is not set (see RFC 5996, p. 72)
+
+	if (sa->receive_msg_id != sa->send_msg_id)
+		return;
+
+	sa->send_msg_id++; // response received
+
+	if (sa->exchange_type != CREATE_CHILD_SA)
+		return; // error
+
+	// FIXME check proposal
+
+	sa->esp.esp_spi_send = sa->proposal.spi;
+
+	make_esp_keys(sa);
+	init_esp_aes(sa);
+
+	k = sa->esp.esp_spi_receive & 0xffff;
+
+	memcpy(sa->esp_tab + k, &sa->esp, sizeof (struct esp_struct));
+
+	sa->esp_tab[k].esp_state = 1;
+	sa->esp_tab[k].send_seq = 0;
+	sa->esp_tab[k].receive_seq = 0;
 
 	sa->state = CONNECTED;
 }
@@ -351,6 +418,7 @@ check_ike_timers()
 		switch (p->state) {
 		case WAITING_FOR_IKE_INIT:
 		case WAITING_FOR_IKE_AUTH:
+		case WAITING_FOR_IKE_CHILD_SA:
 			if (current_time - p->timer < 10)
 				break;
 			if (p->retry == 2) {

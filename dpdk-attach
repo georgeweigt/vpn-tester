@@ -1,0 +1,22 @@
+#!/bin/bash
+
+sudo rmmod rte_kni
+sudo insmod ~/dpdk/x86_64-native-linuxapp-gcc/kmod/rte_kni.ko
+
+sudo systemctl stop NetworkManager
+sudo systemctl stop firewalld
+
+sudo ~/dpdk/tools/dpdk_nic_bind.py -u 0000:08:00.0
+sudo ~/dpdk/tools/dpdk_nic_bind.py -u 0000:08:00.1
+
+sudo rmmod igb_uio
+sudo rmmod uio
+
+sudo modprobe uio
+sudo insmod ~/dpdk/x86_64-native-linuxapp-gcc/kmod/igb_uio.ko
+sudo sysctl -w vm.nr_hugepages=512
+sudo mkdir -p /mnt/huge
+sudo mount -t hugetlbfs nodev /mnt/huge
+
+sudo ~/dpdk/tools/dpdk_nic_bind.py -b igb_uio 0000:08:00.0
+sudo ~/dpdk/tools/dpdk_nic_bind.py -b igb_uio 0000:08:00.1

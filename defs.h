@@ -48,11 +48,11 @@
 #include <rte_hash.h>
 #include <rte_jhash.h>
 
-#define LAN_PORT_ID 0 // can be swapped
-#define WAN_PORT_ID 1
-
-#define Trace //printf("%s\n", __func__);
-
 #include "ipsec.h"
 #include "debug.h"
 #include "prototypes.h"
+
+#define LAN_PORT_ID 0 // swap these to match physical nic connections
+#define WAN_PORT_ID 1
+
+#define Trace //printf("%s\n", __func__);

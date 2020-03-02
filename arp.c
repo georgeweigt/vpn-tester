@@ -49,6 +49,7 @@ init_arp(void)
 	}
 }
 
+#if 0
 void
 check_arp_timers()
 {
@@ -78,59 +79,7 @@ check_arp_timers()
 		}
 	}
 }
-
-void
-send_ipv4_packet_orig(unsigned next_hop, struct rte_mbuf *m)
-{
-	int err, i;
-	struct arp_entry_t *p;
-	unsigned char *buf;
-
-	// lookup
-
-	i = rte_fbk_hash_lookup(arphash, next_hop);
-
-	if (i >= 0) {
-		p = arptab + i;
-		if (p->state == PENDING1)
-			rte_pktmbuf_free(m);
-		else {
-			buf = rte_pktmbuf_mtod(m, unsigned char *);
-			memcpy(buf, p->lladdr, 6);
-			send_to_next_hop(next_hop, m);
-		}
-		return;
-	}
-
-	// not found, create new arp entry
-
-	for (i = 0; i < NARP; i++)
-		if (arptab[i].state == UNUSED)
-			break;
-
-	if (i == NARP) {
-		rte_pktmbuf_free(m);
-		return;
-	}
-
-	err = rte_fbk_hash_add_key(arphash, next_hop, i);
-
-	if (err < 0) {
-		rte_pktmbuf_free(m);
-		return;
-	}
-
-	p = arptab + i;
-
-	p->state = PENDING1;
-	time(&p->timer);
-	p->next_hop = next_hop;
-	p->m = m;
-
-	// send arp request
-
-	send_arp_request(p->next_hop);
-}
+#endif
 
 void
 arp_packet_in(int port, struct rte_mbuf *m)
@@ -193,8 +142,8 @@ arp_request_in(int port, struct rte_mbuf *m)
 
 	tpa = buf[TPA] << 24 | buf[TPA + 1] << 16 | buf[TPA + 2] << 8 | buf[TPA + 3];
 
-	if (tpa != get_spa(port))
-		return;
+	if (check_tpa(port, tpa) == 0)
+		return; // not my ip addr
 
 	// get SHA
 
@@ -364,101 +313,6 @@ arp_reply_in(int port, struct rte_mbuf *m)
 }
 
 void
-send_arp_request(unsigned next_hop)
-{
-	int port;
-	struct rte_mbuf *m;
-	unsigned char *buf;
-	unsigned spa;
-
-	port = route_ipv4(next_hop);
-
-	if (port < 0)
-		return;
-
-	m = rte_pktmbuf_alloc(mempool);
-
-	if (m == NULL)
-		return;
-
-	rte_pktmbuf_append(m, 64);
-
-	buf = rte_pktmbuf_mtod(m, unsigned char *);
-
-	// dst ether addr
-
-	buf[0] = 0xff;
-	buf[1] = 0xff;
-	buf[2] = 0xff;
-	buf[3] = 0xff;
-	buf[4] = 0xff;
-	buf[5] = 0xff;
-
-	// src ether addr
-
-	rte_eth_macaddr_get(port, (struct ether_addr *) (buf + 6));
-
-	// ether type (arp)
-
-	buf[12] = 0x08;
-	buf[13] = 0x06;
-
-	// HTYPE = 0x0001 (ethernet)
-
-	buf[14] = 0x00;
-	buf[15] = 0x01;
-
-	// PTYPE = 0x0800 (internet protocol)
-
-	buf[16] = 0x08;
-	buf[17] = 0x00;
-
-	// byte length of hardware address
-
-	buf[18] = 6;
-
-	// byte length of protocol address
-
-	buf[19] = 4;
-
-	// OPER (arp request)
-
-	buf[20] = 0x00;
-	buf[21] = 0x01;
-
-	// SHA (sender ethernet address)
-
-	rte_eth_macaddr_get(port, (struct ether_addr *) (buf + 22));
-
-	// SPA (sender ip address)
-
-	spa = get_spa(port);
-
-	buf[28] = spa >> 24;
-	buf[29] = spa >> 16;
-	buf[30] = spa >> 8;
-	buf[31] = spa;
-
-	// THA (target hardware address, unknown)
-
-	buf[32] = 0x00;
-	buf[33] = 0x00;
-	buf[34] = 0x00;
-	buf[35] = 0x00;
-	buf[36] = 0x00;
-	buf[37] = 0x00;
-
-	// TPA (target ip address)
-
-	buf[38] = next_hop >> 24;
-	buf[39] = next_hop >> 16;
-	buf[40] = next_hop >> 8;
-	buf[41] = next_hop;
-
-	send_to_port(port, m);
-}
-
-void
 print_arp_table(void)
 {
 	int i;
@@ -472,7 +326,7 @@ print_arp_table(void)
 }
 
 void
-send_arp_request_packet(int port_id, unsigned char *src_ip_addr, unsigned char *dst_ip_addr)
+send_arp_request(int port_id, unsigned char *src_ip_addr, unsigned char *dst_ip_addr)
 {
 	int n;
 	struct rte_mbuf *m;
@@ -575,7 +429,7 @@ resolve_dmac(int port_id, unsigned char *src_ip_addr, unsigned char *dst_ip_addr
 	unsigned char *buf;
 	uint64_t t;
 
-	send_arp_request_packet(port_id, src_ip_addr, dst_ip_addr);
+	send_arp_request(port_id, src_ip_addr, dst_ip_addr);
 
 	k = 1;
 	t = rte_rdtsc();
@@ -587,7 +441,7 @@ resolve_dmac(int port_id, unsigned char *src_ip_addr, unsigned char *dst_ip_addr
 				printf("arp timeout for %d.%d.%d.%d\n", dst_ip_addr[0], dst_ip_addr[1], dst_ip_addr[2], dst_ip_addr[3]);
 				exit(1);
 			}
-			send_arp_request_packet(port_id, src_ip_addr, dst_ip_addr);
+			send_arp_request(port_id, src_ip_addr, dst_ip_addr);
 			k++;
 			t += rte_get_tsc_hz();
 		}

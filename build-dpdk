@@ -1,0 +1,6 @@
+#!/bin/bash
+cd ~/dpdk
+export RTE_SDK=`pwd`
+export RTE_TARGET=x86_64-native-linuxapp-gcc
+export DESTDIR=.
+make install T=x86_64-native-linuxapp-gcc

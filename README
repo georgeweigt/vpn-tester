@@ -1,0 +1,55 @@
+Example configuration:
+
+ _________________________________
+|                                 |
+|            Sonicwall            |
+|                                 |
+| 172.16.0.1/16     172.17.0.1/16 |
+| LAN                         WAN |
+| X18                         X19 |
+|_________________________________|
+   |                           |
+   |                           |
+   |                           |
+   |                           |
+ __|___________________________|__
+|                                 |
+| LAN_PORT_ID         WAN_PORT_ID |
+| 172.16.0.0/16        172.17.0.2 |
+|                                 |
+|           Dell Server           |
+|_________________________________|
+
+
+
+Security Policy
+     Site to Site
+     IKE using Preshared Secret
+     foobar
+     172.17.0.2
+     0.0.0.0
+
+IKE Authentiction
+     foobar
+     foobar
+     Key Identifier: foobar
+     Key Identifier: foobar
+
+Local Networks
+     Any address
+
+Remote Networks
+     foobar (AO defined as 172.18.0.0/16)
+
+IKE (Phase 1) Proposal
+     IKEv2 Mode
+     Group 2
+     AES-128
+     SHA1
+     28800
+
+Ipsec (Phase 2) Proposal
+     ESP
+     AES-128
+     SHA1
+     28800

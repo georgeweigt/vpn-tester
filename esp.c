@@ -196,8 +196,11 @@ esp_payload_in(unsigned char *buf, int esp_length)
 	spi = buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3];
 	seq = buf[4] << 24 | buf[5] << 16 | buf[6] << 8 | buf[7];
 
-	j = buf[2]; // non-standard hack
-	k = buf[3];
+//	j = buf[2]; // non-standard hack
+//	k = buf[3];
+
+	j = 0;
+	k = spi & 0xffff; // non-standard hack
 
 	if (j >= NUM_IKE_SA || k >= NUM_ESP_SA)
 		return;
@@ -247,7 +250,7 @@ esp_payload_in(unsigned char *buf, int esp_length)
 	if (next_header == 59)
 		return; // dummy packet, see RFC 4303, p. 16
 
-	send_to_wan_fd(payload, len);
+	packet_from_tunnel(payload, len);
 }
 
 struct esp_struct *

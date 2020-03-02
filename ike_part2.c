@@ -53,7 +53,6 @@ parse(struct sa *p, unsigned char *buf, int buflen)
 	int next_payload;
 	int payload_length;
 	int version;
-	int flags;
 	int msglen;
 
 	unsigned long long spi_i;
@@ -82,8 +81,8 @@ parse(struct sa *p, unsigned char *buf, int buflen)
 	next_payload = *buf++;
 	version = *buf++;
 	p->exchange_type = *buf++;
-	flags = *buf++;
-	p->msg_id = get32(buf);
+	p->flags = *buf++;
+	p->receive_msg_id = get32(buf);
 	buf += 4;
 	msglen = get32(buf);
 	buf += 4;
@@ -98,7 +97,7 @@ parse(struct sa *p, unsigned char *buf, int buflen)
 		return;
 	}
 
-	handle_ike_header(p, spi_i, spi_r, version, p->exchange_type, flags, p->msg_id, msglen);
+	handle_ike_header(p, spi_i, spi_r, version, p->exchange_type, p->flags, p->msg_id, msglen);
 
 	clear_proposal(p);
 	p->rekey_flag = 0;
@@ -704,13 +703,18 @@ parse_delete(unsigned char *buf, struct sa *p)
 		return;
 	}
 
-	if (spi_size == 0) {
+	if (protocol == 1 && spi_size == 0) {
 		handle_delete(p, protocol, spi_size, NULL);
 		return;
 	}
 
-	for (i = 0; i < num_spi; i++)
-		handle_delete(p, protocol, spi_size, buf + 8 + i * spi_size);
+	if ((protocol == 2 || protocol == 3) && spi_size == 4) {
+		for (i = 0; i < num_spi; i++)
+			handle_delete(p, protocol, spi_size, buf + 8 + i * spi_size);
+		return;
+	}
+
+	parse_error(__LINE__, "Delete payload syntax: protocol id and spi size");
 }
 
 /*

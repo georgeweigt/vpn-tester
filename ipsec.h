@@ -1,8 +1,8 @@
 #define UDP_PORT 500
 //#define UDP_PORT 4500
-#define NUM_IKE_SA 12
-#define NUM_ESP_SA 12	// number of ESP SA per IKE SA
-#define NUM_TS 12	// number of TS per ESP SA
+#define NUM_IKE_SA 1
+#define NUM_ESP_SA 10000	// number of ESP SA per IKE SA
+#define NUM_TS 1	// number of TS per ESP SA
 
 struct selector {
 	unsigned char data[40];
@@ -77,6 +77,11 @@ struct sa {
 
 	unsigned int send_seq;
 	unsigned int receive_seq;
+
+	unsigned int send_msg_id;
+	unsigned int receive_msg_id;
+
+	unsigned int flags;
 
 	unsigned char public_key_1[128]; // my public key
 	unsigned char public_key_2[128]; // the other guy's public key
@@ -161,12 +166,11 @@ struct sa {
 
 // sa states
 
-#define SENT_INIT 1
-#define REPLIED_INIT 2
-#define SENT_AUTH 3
-#define REPLIED_AUTH 4
-
-#define READY 5
+#define IDLE 0
+#define WAITING_FOR_IKE_INIT 1
+#define WAITING_FOR_IKE_AUTH 2
+#define WAITING_FOR_IKE_CHILD_SA 3
+#define CONNECTED 4
 
 // sa actions
 

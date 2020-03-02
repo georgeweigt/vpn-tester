@@ -42,6 +42,7 @@ send_initiator_ike_init(struct sa *p)
 void
 send_initiator_ike_auth(struct sa *p)
 {
+	int i, t;
 	Trace
 
 	p->exchange_type = IKE_AUTH;
@@ -62,26 +63,7 @@ send_initiator_ike_auth(struct sa *p)
 
 	emit32(p, 0);			// message length (0 for now)
 
-	emit_encrypted_payload(p);
-
-	p->len = p->k;			// update message length
-	p->k = 24;
-	emit32(p, p->len);
-
-	emit_checksum(p);
-
-//	print_response(p); // FIXME remove
-
-	send_ike_msg(p, p->buf, p->len);
-}
-
-void
-emit_encrypted_payload(struct sa *p)
-{
-	int i, t;
-	Trace
-
-	start_payload(p, TYPE_SK);
+	start_payload(p, TYPE_SK);	// start TYPE_SK
 
 	t = p->k0;			// nested payloads, save k0
 
@@ -100,7 +82,68 @@ emit_encrypted_payload(struct sa *p)
 
 	p->k += 12;			// make room for 96-bit integrity checksum
 
+	end_payload(p);			// end TYPE_SK
+
+	p->len = p->k;			// update message length
+	p->k = 24;
+	emit32(p, p->len);
+
+	emit_checksum(p);
+
+	send_ike_msg(p, p->buf, p->len);
+}
+
+void
+send_initiator_create_child_sa(struct sa *p)
+{
+	int i, t;
+	Trace
+
+	p->exchange_type = CREATE_CHILD_SA;
+
+	p->buf = bigbuf + 4;
+	p->k = 0;
+	p->k0 = 16;
+
+	emit64(p, p->initiator_spi);
+	emit64(p, p->responder_spi);
+
+	emit8(p, 0);			// next payload (0 for now)
+	emit8(p, 0x20);			// version 2.0
+	emit8(p, CREATE_CHILD_SA);	// exchange type
+	emit8(p, 0x08);			// flags (initiator bit)
+
+	emit32(p, p->send_msg_id);	// message id
+
+	emit32(p, 0);			// message length (0 for now)
+
+	start_payload(p, TYPE_SK);
+
+	t = p->k0;			// nested payloads, save k0
+
+	for (i = 0; i < 4; i++)
+		emit32(p, random());	// emit IV
+
+	emit_esp_sa(p);
+	emit_nonce(p);
+	emit_traffic_selectors_i(p);
+	emit_traffic_selectors_r(p);
+
+	p->k0 = t;			// restore k0
+
+	encrypt_payload(p);
+
+	p->k += 12;			// make room for 96-bit integrity checksum
+
 	end_payload(p);
+
+	p->len = p->k;			// update message length
+	p->k = 24;
+	emit32(p, p->len);
+
+	emit_checksum(p);
+
+	send_ike_msg(p, p->buf, p->len);
 }
 
 void
@@ -415,6 +458,7 @@ send_responder_ike_init(struct sa *p)
 void
 send_responder_ike_auth(struct sa *p)
 {
+	int i, t;
 	Trace
 
 	p->exchange_type = IKE_AUTH;
@@ -435,7 +479,26 @@ send_responder_ike_auth(struct sa *p)
 
 	emit32(p, 0);			// message length (0 for now)
 
-	emit_encrypted_payload(p);
+	start_payload(p, TYPE_SK);	// start TYPE_SK
+
+	t = p->k0;			// nested payloads, save k0
+
+	for (i = 0; i < 4; i++)
+		emit32(p, random());	// emit IV
+
+	emit_id_payload(p);
+	emit_auth_payload(p);
+	emit_esp_sa(p);
+	emit_traffic_selectors_i(p);
+	emit_traffic_selectors_r(p);
+
+	p->k0 = t;			// restore k0
+
+	encrypt_payload(p);
+
+	p->k += 12;			// make room for 96-bit integrity checksum
+
+	end_payload(p);			// end TYPE_SK
 
 	p->len = p->k;			// update message length
 	p->k = 24;
@@ -1254,6 +1317,22 @@ emit_create_esp_response_payload(struct sa *p)
 	encrypt_payload(p);
 
 	p->k += 12;			// make room for checksum
+
+	end_payload(p);
+}
+
+void
+emit_notify_use_transport_mode(struct sa *p)
+{
+	Trace
+
+	start_payload(p, TYPE_NOTIFY);
+
+	emit8(p, PROTOCOL_ESP);
+	emit8(p, 4);			// 4 byte spi
+	emit16(p, 16391);		// USE_TRANSPORT_MODE (see RFC 5996, p. 100)
+
+	emit32(p, p->esp.esp_spi_receive);
 
 	end_payload(p);
 }

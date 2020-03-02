@@ -1,4 +1,8 @@
+// Sets up 10,000 VPN tunnels
+
 #include "defs.h"
+
+#define NETMASK 0xffff0000 // 255.255.0.0 (both wan and lan)
 
 // settings
 
@@ -9,8 +13,8 @@ char *remote_id;
 char *lan_interface_ip_str;
 char *wan_interface_ip_str;
 
-char *lan_host_ip_str;
-char *wan_host_ip_str;
+char *lan_host_ip_str = "0.0.0.0";
+char *wan_host_ip_str = "0.0.0.0";
 
 char *local_network_start_str;
 char *local_network_end_str;
@@ -46,7 +50,7 @@ unsigned char wan_host_ip[4];
 
 // global vars
 
-int debug = 1;
+int debug = 0;
 struct rte_mempool *mempool;
 time_t current_time;
 int lan_fd;
@@ -58,27 +62,13 @@ struct sa ike_sa[NUM_IKE_SA];
 unsigned char bigbuf[10000];
 unsigned char ether_addr[2][6];
 
-#define PORT0_IP 0x14000002 // 20.0.0.2
-#define PORT1_IP 0x15000002 // 21.0.0.2
+int packets_from_lan;
+int packets_from_tunnel;
 
-#define PORT0_GW 0x14000001 // 20.0.0.1 (X20 on 9800)
-#define PORT1_GW 0x15000001 // 21.0.0.1 (X21 on 9800)
+int pings_sent;
+int pings_received;
 
-#define SRC_IP PORT1_IP // send on port 1
-#define DST_IP PORT0_IP // receive on port 0
-
-#define GATEWAY_IP PORT1_GW
-
-#define NFLOW 250 // number of udp flows
-#define IP_LENGTH 128
-
-//#define PACKETS_PER_SECOND 2500000 // 2500000 //2700000
-#define PACKETS_PER_SECOND 250	// 2500000 //2700000
-
-#define SRC_PORT 60000 //10000
-#define DST_PORT 60001 //10001
-
-#define N_RX_DESC 512 //128
+#define N_RX_DESC 512
 #define N_TX_DESC 512
 #define NB_MBUF 8192
 #define MAX_PKT_BURST 32
@@ -135,32 +125,31 @@ main(int argc, char **argv)
 			ether_addr[i][4],
 			ether_addr[i][5]);
 
-	init_lan_tunnel_interface();
-	init_wan_tunnel_interface();
-
 	srandom(time(NULL));
 
 	aes_init();
 
 	time(&current_time);
 
-	p = &ike_sa[0];
-	init_sa(p);
-	send_initiator_ike_init(p);
-	p->state = 1;
-	p->timer = current_time;
-	p->retry = 0;
-
 	for (;;) {
 		check_dpdk_receive(0, 0);
 		check_dpdk_receive(1, 0);
-		handle_socket_events();
+		start_vpn_connection();
 		time(&t);
 		if (t == current_time)
 			continue;
+		// once per second
 		current_time = t;
-		check_arp_timers();
 		check_ike_timers();
+		print_status();
+#if 1
+		for (i = 0; i < 10; i++) {
+			send_ping_vpn_to_lan();
+			send_ping_lan_to_vpn();
+		}
+#else
+		send_ping_vpn_to_vpn(); // sonicwall needs a vpn-to-vpn access rule for this to work
+#endif
 	}
 }
 
@@ -226,18 +215,22 @@ init_ether(int port_id, int nq)
 	rte_eth_promiscuous_enable(port_id); // for ipv6 neighbor discovery protocol
 }
 
-unsigned
-get_spa(int port)
+int
+check_tpa(int port, unsigned tpa)
 {
+	unsigned ip = 0;
 	switch (port) {
 	case LAN_PORT_ID:
-		return my_lan_ip[0] << 24 | my_lan_ip[1] << 16 | my_lan_ip[2] << 8 | my_lan_ip[3];
+		ip = sonicwall_lan_ip[0] << 24 | sonicwall_lan_ip[1] << 16 | sonicwall_lan_ip[2] << 8 | sonicwall_lan_ip[3];
+		break;
 	case WAN_PORT_ID:
-		return my_wan_ip[0] << 24 | my_wan_ip[1] << 16 | my_wan_ip[2] << 8 | my_wan_ip[3];
+		ip = sonicwall_wan_ip[0] << 24 | sonicwall_wan_ip[1] << 16 | sonicwall_wan_ip[2] << 8 | sonicwall_wan_ip[3];
+		break;
 	}
-	printf("error (%s, line %d)\n", __FILE__, __LINE__);
-	exit(1);
-	return 0;
+	if (tpa != ip && (tpa & NETMASK) == (ip & NETMASK))
+		return 1;
+	else
+		return 0;
 }
 
 // returns the dpdk port number
@@ -314,9 +307,8 @@ update_tcp_checksum_ipv6(unsigned char *buf, unsigned m)
 	buf[57] = m;
 }
 
-#if 0
 void
-set_ip_checksum_ipv4(unsigned char *buf)
+set_ip_header_checksum(unsigned char *buf)
 {
 	int i, ip_hdr_len;
 	unsigned sum = 0;
@@ -331,7 +323,6 @@ set_ip_checksum_ipv4(unsigned char *buf)
 	buf[10] = sum >> 8;
 	buf[11] = sum;
 }
-#endif
 
 void
 set_tcp_checksum_ipv4(unsigned char *buf)
@@ -813,36 +804,40 @@ create_tun(char *name)
 }
 
 void
-init_sa(struct sa *p)
+init_sa(struct sa *p, int sa_index, int esp_index)
 {
 	Trace
 	if (strchr(local_network_start_str, ':'))
-		init_sa_ipv6(p);
+		init_sa_ipv6(p, sa_index, esp_index);
 	else
-		init_sa_ipv4(p);
+		init_sa_ipv4(p, sa_index, esp_index);
 }
 
 void
-init_sa_ipv4(struct sa *p)
+init_sa_ipv4(struct sa *p, int sa_index, int esp_index)
 {
 	int i;
+	unsigned u;
+	unsigned char ip[4];
 	Trace
 
-	p->state = 1;
-	p->udp_port = UDP_PORT;
+	if (p->state == 0) {
+		p->udp_port = UDP_PORT;
+		p->initiator = 1;
+		p->initiator_spi = (unsigned long long) random() << 32 | random();
+		p->prf_length = 20;
+		strcpy((char *) p->shared_secret, shared_secret);
+		p->shared_secret_length = strlen(shared_secret); // TODO check length
+		p->id_type_i = ID_KEY_ID;
+		strcpy((char *) p->id_i, local_id);
+		p->id_i_length = strlen(local_id); // TODO check length
+		p->dh_key_length = 128; // Diffie-Hellman Group 2
+	}
 
-	p->initiator = 1;
-	p->initiator_spi = (unsigned long long) random() << 32 | random();
-	p->prf_length = 20;
-	strcpy((char *) p->shared_secret, shared_secret);
-	p->shared_secret_length = strlen(shared_secret); // TODO check length
-	p->id_type_i = ID_KEY_ID;
-	strcpy((char *) p->id_i, local_id);
-	p->id_i_length = strlen(local_id); // TODO check length
-	p->dh_key_length = 128; // Diffie-Hellman Group 2
+	// p->esp is copied to p->esp_tab later
 
 	p->esp.esp_initiator = 1;
-	p->esp.esp_spi_receive = random() << 16 | 0 << 8 | 0; // j,k == 0
+	p->esp.esp_spi_receive = random() << 16 | esp_index;
 
 	p->esp.selector_src[0].data[0] = TS_IPV4_ADDR_RANGE;
 	p->esp.selector_src[0].data[1] = 0; // ip protocol
@@ -850,8 +845,18 @@ init_sa_ipv4(struct sa *p)
 	p->esp.selector_src[0].data[5] = 0x00;
 	p->esp.selector_src[0].data[6] = 0xff; // end port
 	p->esp.selector_src[0].data[7] = 0xff;
-	inet_pton(AF_INET, local_network_start_str, (unsigned int *) (p->esp.selector_src[0].data + 8));
-	inet_pton(AF_INET, local_network_end_str, (unsigned int *) (p->esp.selector_src[0].data + 12));
+//	inet_pton(AF_INET, local_network_start_str, (unsigned int *) (p->esp.selector_src[0].data + 8));
+//	inet_pton(AF_INET, local_network_end_str, (unsigned int *) (p->esp.selector_src[0].data + 12));
+
+	inet_pton(AF_INET, local_network_start_str, ip);
+	u = ip[0] << 24 | ip[1] << 16 | ip[2] << 8 | ip[3];
+	u += esp_index + 1;
+	ip[0] = u >> 24;
+	ip[1] = u >> 16;
+	ip[2] = u >> 8;
+	ip[3] = u;
+	memcpy(p->esp.selector_src[0].data + 8, ip, 4); // start ip address
+	memcpy(p->esp.selector_src[0].data + 12, ip, 4); // end ip address
 
 	p->esp.selector_dst[0].data[0] = TS_IPV4_ADDR_RANGE;
 	p->esp.selector_dst[0].data[1] = 0; // ip protocol
@@ -870,26 +875,26 @@ init_sa_ipv4(struct sa *p)
 }
 
 void
-init_sa_ipv6(struct sa *p)
+init_sa_ipv6(struct sa *p, int sa_index, int esp_index)
 {
 	int i;
 	Trace
 
-	p->state = 1;
-	p->udp_port = UDP_PORT;
-
-	p->initiator = 1;
-	p->initiator_spi = (unsigned long long) random() << 32 | random();
-	p->prf_length = 20;
-	strcpy((char *) p->shared_secret, shared_secret);
-	p->shared_secret_length = strlen(shared_secret);
-	p->id_type_i = ID_KEY_ID;
-	strcpy((char *) p->id_i, local_id);
-	p->id_i_length = strlen(local_id);
-	p->dh_key_length = 128; // Diffie-Hellman Group 2
+	if (p->state == 0) {
+		p->udp_port = UDP_PORT;
+		p->initiator = 1;
+		p->initiator_spi = (unsigned long long) random() << 32 | random();
+		p->prf_length = 20;
+		strcpy((char *) p->shared_secret, shared_secret);
+		p->shared_secret_length = strlen(shared_secret);
+		p->id_type_i = ID_KEY_ID;
+		strcpy((char *) p->id_i, local_id);
+		p->id_i_length = strlen(local_id);
+		p->dh_key_length = 128; // Diffie-Hellman Group 2
+	}
 
 	p->esp.esp_initiator = 1;
-	p->esp.esp_spi_receive = random() << 16 | 0 << 8 | 0; // j,k == 0
+	p->esp.esp_spi_receive = random() << 16 | esp_index;
 
 	p->esp.selector_src[0].data[0] = TS_IPV6_ADDR_RANGE;
 	p->esp.selector_src[0].data[1] = 0; // ip protocol
@@ -919,7 +924,6 @@ init_sa_ipv6(struct sa *p)
 void
 check_dpdk_receive(int port_id, int queue_id)
 {
-int j;
 	int i, len, n;
 	unsigned char *buf;
 	struct rte_mbuf *m[MAX_PKT_BURST];
@@ -933,10 +937,10 @@ int j;
 		case 0x0800:
 			switch (port_id) {
 			case LAN_PORT_ID:
-				receive_from_sonicwall_lan_interface(buf + 14, len - 14);
+				packet_from_sonicwall_lan_interface(buf + 14, len - 14);
 				break;
 			case WAN_PORT_ID:
-				receive_from_sonicwall_wan_interface(buf + 14, len - 14);
+				packet_from_sonicwall_wan_interface(buf + 14, len - 14);
 				break;
 			}
 			break;
@@ -951,16 +955,43 @@ int j;
 // buf points to start of ip header
 
 void
-receive_from_sonicwall_lan_interface(unsigned char *buf, int len)
+packet_from_sonicwall_lan_interface(unsigned char *buf, int len)
 {
+	int ip_hdr_len, ip_length;
+	unsigned char *payload;
 	Trace
-	send_to_lan_fd(buf, len);
+
+	packets_from_lan++;
+
+	if (len < 20)
+		return;
+
+	ip_hdr_len = 4 * (buf[0] & 0xf);
+
+	if (ip_hdr_len < 20)
+		return;
+
+	ip_length = buf[2] << 8 | buf[3];
+
+	if (ip_length < ip_hdr_len || ip_length > len)
+		return;
+
+	payload = buf + ip_hdr_len;
+
+	// switch on ip protocol
+
+	switch (buf[9]) {
+	case 1:
+		if (ip_length == 44 && memcmp(buf + 12, buf + 36, 8) == 0) // check src and dst
+			pings_received++;
+		break;
+	}
 }
 
 // buf points to start of ip header
 
 void
-receive_from_sonicwall_wan_interface(unsigned char *buf, int len)
+packet_from_sonicwall_wan_interface(unsigned char *buf, int len)
 {
 	int ip_hdr_len, ip_length, udp_length, dport;
 	unsigned char *payload;
@@ -1087,6 +1118,8 @@ receive_from_wan_fd()
 	handle_encryption(n); // send to sonicwall (see esp.c)
 }
 
+// for natted connections
+
 void
 compute_checksum_corrections()
 {
@@ -1129,4 +1162,348 @@ compute_checksum_corrections()
 	m = (m >> 16) + (m & 0xffff);
 
 	wan_checksum_correction = m;
+}
+
+void
+start_vpn_connection(void)
+{
+	static int k;
+	struct sa *p = &ike_sa[0];
+	if (k == NUM_ESP_SA)
+		return;
+	if (k == 0) {
+		init_sa(p, 0, 0);
+		send_initiator_ike_init(p);
+		p->state = WAITING_FOR_IKE_INIT;
+	} else {
+		if (p->state != CONNECTED)
+			return;
+		init_sa(p, 0, k);
+		send_initiator_create_child_sa(p);
+		p->state = WAITING_FOR_IKE_CHILD_SA;
+	}
+	p->timer = current_time;
+	p->retry = 0;
+	k++;
+}
+
+void
+print_status(void)
+{
+	int i, n = 0;
+	static int k;
+	for (i = 0; i < NUM_ESP_SA; i++) {
+		if (ike_sa[0].esp_tab[i].esp_state)
+			n++;
+	}
+	if (k == 0)
+		printf("%5s%12s%12s%12s%12s\n", "vpn", "pings sent", "pings rcvd", "lan", "tunnel");
+	k = (k + 1) %10;
+	printf("%5d%12d%12d%12d%12d\n", n, pings_sent, pings_received, packets_from_lan, packets_from_tunnel);
+}
+
+// buf points to start of ip header
+
+void
+packet_from_tunnel(unsigned char *buf, int len)
+{
+	int k;
+	unsigned u, v;
+	int ip_hdr_len, ip_length;
+	unsigned char *payload;
+	Trace
+
+	packets_from_tunnel++;
+
+	if (len < 20)
+		return;
+
+	ip_hdr_len = 4 * (buf[0] & 0xf);
+
+	if (ip_hdr_len < 20)
+		return;
+
+	ip_length = buf[2] << 8 | buf[3];
+
+	if (ip_length < ip_hdr_len || ip_length > len)
+		return;
+
+	payload = buf + ip_hdr_len;
+
+	// get tunnel number from dst ip and check
+
+	u = buf[16] << 24 | buf[17] << 16 | buf[18] << 8 | buf[19];
+	v = local_network_start[0] << 24 | local_network_start[1] << 16 | local_network_start[2] << 8 | local_network_start[3];
+	k = u - v - 1;
+	if (k < 0 || k >= NUM_ESP_SA)
+		return;
+	if (memcmp(ike_sa[0].esp_tab[k].selector_src[0].data + 8, buf + 16, 4) != 0)
+		return;
+
+	// switch on ip protocol
+
+	switch (buf[9]) {
+	case 1:
+		if (ip_length == 44 && memcmp(buf + 12, buf + 36, 8) == 0) // check payload
+			pings_received++;
+		break;
+	}
+}
+
+void
+send_ping_vpn_to_lan(void)
+{
+	int i, j;
+	unsigned u, sum;
+	unsigned char *buf = bigbuf + 24, src[4], dst[4];
+
+	static int k;
+
+	j = k;
+	k = (k + 1) % NUM_ESP_SA;
+
+	if (ike_sa[0].esp_tab[j].esp_state == 0)
+		return; // tunnel not set up
+
+	// src
+
+	u = local_network_start[0] << 24 | local_network_start[1] << 16 | local_network_start[2] << 8 | local_network_start[3];
+	u += j + 1;
+	src[0] = u >> 24;
+	src[1] = u >> 16;
+	src[2] = u >> 8;
+	src[3] = u;
+
+	// dst
+
+	u = sonicwall_lan_ip[0] << 24 | sonicwall_lan_ip[1] << 16 | sonicwall_lan_ip[2] << 8 | sonicwall_lan_ip[3];
+	u += j + 1;
+	dst[0] = u >> 24;
+	dst[1] = u >> 16;
+	dst[2] = u >> 8;
+	dst[3] = u;
+
+	// ip header
+
+	buf[0] = 0x45;
+	buf[1] = 0;
+	buf[2] = 0;
+	buf[3] = 44; // total length
+	buf[4] = 0;
+	buf[5] = 0;
+	buf[6] = 0;
+	buf[7] = 0;
+	buf[8] = 64; // time to live
+	buf[9] = 1; // protocol = icmp
+	buf[10] = 0;
+	buf[11] = 0;
+	memcpy(buf + 12, src, 4);
+	memcpy(buf + 16, dst, 4);
+
+	// ip checksum
+
+	sum = 0;
+	for (i = 0; i < 20; i += 2)
+		sum += buf[i] << 8 | buf[i + 1];
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum ^= 0xffff;
+	buf[10] = sum >> 8;
+	buf[11] = sum;
+
+	// icmp echo request
+
+	buf[20] = 8; // type = echo request
+	buf[21] = 0;
+	buf[22] = 0;
+	buf[23] = 0;
+
+	memcpy(buf + 24, buf, 20); // copy ip header
+
+	// icmp checksum
+
+	sum = 0;
+	for (i = 0; i < 24; i += 2)
+		sum += buf[i + 20] << 8 | buf[i + 21];
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum ^= 0xffff;
+	buf[22] = sum >> 8;
+	buf[23] = sum;
+
+	handle_encryption(44); // send to sonicwall (see esp.c)
+
+	pings_sent++;
+}
+
+void
+send_ping_lan_to_vpn(void)
+{
+	int i, j;
+	unsigned u, sum;
+	unsigned char *buf = bigbuf + 24, src[4], dst[4];
+
+	static int k;
+
+	j = k;
+	k = (k + 1) % NUM_ESP_SA;
+
+	if (ike_sa[0].esp_tab[j].esp_state == 0)
+		return; // tunnel not set up
+
+	// src
+
+	u = sonicwall_lan_ip[0] << 24 | sonicwall_lan_ip[1] << 16 | sonicwall_lan_ip[2] << 8 | sonicwall_lan_ip[3];
+	u += j + 1;
+	src[0] = u >> 24;
+	src[1] = u >> 16;
+	src[2] = u >> 8;
+	src[3] = u;
+
+	// dst
+
+	u = local_network_start[0] << 24 | local_network_start[1] << 16 | local_network_start[2] << 8 | local_network_start[3];
+	u += j + 1;
+	dst[0] = u >> 24;
+	dst[1] = u >> 16;
+	dst[2] = u >> 8;
+	dst[3] = u;
+
+	// ip header
+
+	buf[0] = 0x45;
+	buf[1] = 0;
+	buf[2] = 0;
+	buf[3] = 44; // total length
+	buf[4] = 0;
+	buf[5] = 0;
+	buf[6] = 0;
+	buf[7] = 0;
+	buf[8] = 64; // time to live
+	buf[9] = 1; // protocol = icmp
+	buf[10] = 0;
+	buf[11] = 0;
+	memcpy(buf + 12, src, 4);
+	memcpy(buf + 16, dst, 4);
+
+	// ip checksum
+
+	sum = 0;
+	for (i = 0; i < 20; i += 2)
+		sum += buf[i] << 8 | buf[i + 1];
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum ^= 0xffff;
+	buf[10] = sum >> 8;
+	buf[11] = sum;
+
+	// icmp echo request
+
+	buf[20] = 8; // type = echo request
+	buf[21] = 0;
+	buf[22] = 0;
+	buf[23] = 0;
+
+	memcpy(buf + 24, buf, 20); // copy ip header
+
+	// icmp checksum
+
+	for (i = 0; i < 24; i += 2)
+		sum += buf[i + 20] << 8 | buf[i + 21];
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum ^= 0xffff;
+	buf[22] = sum >> 8;
+	buf[23] = sum;
+
+	send_ipv4_packet(LAN_PORT_ID, buf);
+
+	pings_sent++;
+}
+
+// sonicwall needs a vpn-to-vpn access rule for this to work
+
+void
+send_ping_vpn_to_vpn(void)
+{
+	int i, j;
+	unsigned u, sum;
+	unsigned char *buf = bigbuf + 24, src[4], dst[4];
+
+	static int k;
+
+	j = k;
+	k = (k + 1) % NUM_ESP_SA;
+
+	if (ike_sa[0].esp_tab[j].esp_state == 0 || ike_sa[0].esp_tab[k].esp_state == 0)
+		return; // tunnel not set up
+
+	// src
+
+	u = local_network_start[0] << 24 | local_network_start[1] << 16 | local_network_start[2] << 8 | local_network_start[3];
+	u += j + 1;
+	src[0] = u >> 24;
+	src[1] = u >> 16;
+	src[2] = u >> 8;
+	src[3] = u;
+
+	// dst
+
+	u = local_network_start[0] << 24 | local_network_start[1] << 16 | local_network_start[2] << 8 | local_network_start[3];
+	u += k + 1;
+	dst[0] = u >> 24;
+	dst[1] = u >> 16;
+	dst[2] = u >> 8;
+	dst[3] = u;
+
+	// ip header
+
+	buf[0] = 0x45;
+	buf[1] = 0;
+	buf[2] = 0;
+	buf[3] = 44; // total length
+	buf[4] = 0;
+	buf[5] = 0;
+	buf[6] = 0;
+	buf[7] = 0;
+	buf[8] = 64; // time to live
+	buf[9] = 1; // protocol = icmp
+	buf[10] = 0;
+	buf[11] = 0;
+	memcpy(buf + 12, src, 4);
+	memcpy(buf + 16, dst, 4);
+
+	// ip checksum
+
+	sum = 0;
+	for (i = 0; i < 20; i += 2)
+		sum += buf[i] << 8 | buf[i + 1];
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum ^= 0xffff;
+	buf[10] = sum >> 8;
+	buf[11] = sum;
+
+	// icmp echo request
+
+	buf[20] = 8; // type = echo request
+	buf[21] = 0;
+	buf[22] = 0;
+	buf[23] = 0;
+
+	memcpy(buf + 24, buf, 20); // copy ip header
+
+	// icmp checksum
+
+	for (i = 0; i < 24; i += 2)
+		sum += buf[i + 20] << 8 | buf[i + 21];
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum ^= 0xffff;
+	buf[22] = sum >> 8;
+	buf[23] = sum;
+
+	handle_encryption(44); // send to sonicwall (see esp.c)
+
+	pings_sent++;
 }
