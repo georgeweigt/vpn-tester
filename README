@@ -2,7 +2,7 @@ Example configuration:
 
  _________________________________
 |                                 |
-|            Sonicwall            |
+|            Firewall             |
 |                                 |
 | 172.16.0.1/16     172.17.0.1/16 |
 | LAN                         WAN |

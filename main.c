@@ -25,8 +25,8 @@ char *remote_network_end_str;
 char *my_lan_ip_str;
 char *my_wan_ip_str;
 
-char *sonicwall_lan_ip_str;
-char *sonicwall_wan_ip_str;
+char *dut_lan_ip_str;
+char *dut_wan_ip_str;
 
 // ipv4 addresses in big endian
 
@@ -39,8 +39,8 @@ unsigned char remote_network_end[4];
 unsigned char my_lan_ip[4];
 unsigned char my_wan_ip[4];
 
-unsigned char sonicwall_lan_ip[4];
-unsigned char sonicwall_wan_ip[4];
+unsigned char dut_lan_ip[4];
+unsigned char dut_wan_ip[4];
 
 unsigned char lan_interface_ip[4];
 unsigned char wan_interface_ip[4];
@@ -113,8 +113,8 @@ main(int argc, char **argv)
 
 	compute_checksum_corrections();
 
-	resolve_dmac(LAN_PORT_ID, my_lan_ip, sonicwall_lan_ip, ether_addr[LAN_PORT_ID]);
-	resolve_dmac(WAN_PORT_ID, my_wan_ip, sonicwall_wan_ip, ether_addr[WAN_PORT_ID]);
+	resolve_dmac(LAN_PORT_ID, my_lan_ip, dut_lan_ip, ether_addr[LAN_PORT_ID]);
+	resolve_dmac(WAN_PORT_ID, my_wan_ip, dut_wan_ip, ether_addr[WAN_PORT_ID]);
 
 	for (i = 0; i < 2; i++)
 		printf("%d: %02x:%02x:%02x:%02x:%02x:%02x\n", i,
@@ -148,7 +148,7 @@ main(int argc, char **argv)
 			send_ping_lan_to_vpn();
 		}
 #else
-		send_ping_vpn_to_vpn(); // sonicwall needs a vpn-to-vpn access rule for this to work
+		send_ping_vpn_to_vpn(); // dut needs a vpn-to-vpn access rule for this to work
 #endif
 	}
 }
@@ -221,10 +221,10 @@ check_tpa(int port, unsigned tpa)
 	unsigned ip = 0;
 	switch (port) {
 	case LAN_PORT_ID:
-		ip = sonicwall_lan_ip[0] << 24 | sonicwall_lan_ip[1] << 16 | sonicwall_lan_ip[2] << 8 | sonicwall_lan_ip[3];
+		ip = dut_lan_ip[0] << 24 | dut_lan_ip[1] << 16 | dut_lan_ip[2] << 8 | dut_lan_ip[3];
 		break;
 	case WAN_PORT_ID:
-		ip = sonicwall_wan_ip[0] << 24 | sonicwall_wan_ip[1] << 16 | sonicwall_wan_ip[2] << 8 | sonicwall_wan_ip[3];
+		ip = dut_wan_ip[0] << 24 | dut_wan_ip[1] << 16 | dut_wan_ip[2] << 8 | dut_wan_ip[3];
 		break;
 	}
 	if (tpa != ip && (tpa & NETMASK) == (ip & NETMASK))
@@ -238,9 +238,9 @@ check_tpa(int port, unsigned tpa)
 int
 route_ipv4(unsigned next_hop)
 {
-	if (next_hop == ntohl(*((unsigned *) sonicwall_lan_ip)))
+	if (next_hop == ntohl(*((unsigned *) dut_lan_ip)))
 		return LAN_PORT_ID;
-	if (next_hop == ntohl(*((unsigned *) sonicwall_wan_ip)))
+	if (next_hop == ntohl(*((unsigned *) dut_wan_ip)))
 		return WAN_PORT_ID;
 	printf("error (%s, line %d)\n", __FILE__, __LINE__);
 	exit(1);
@@ -502,19 +502,19 @@ read_config_file(char *filename)
 			continue;
 		}
 
-		if (strcmp(s, "sonicwall_lan_ip") == 0) {
+		if (strcmp(s, "dut_lan_ip") == 0) {
 			s = tab[k++];
 			if (s == NULL)
 				break;
-			sonicwall_lan_ip_str = s;
+			dut_lan_ip_str = s;
 			continue;
 		}
 
-		if (strcmp(s, "sonicwall_wan_ip") == 0) {
+		if (strcmp(s, "dut_wan_ip") == 0) {
 			s = tab[k++];
 			if (s == NULL)
 				break;
-			sonicwall_wan_ip_str = s;
+			dut_wan_ip_str = s;
 			continue;
 		}
 
@@ -600,13 +600,13 @@ read_config_file(char *filename)
 		exit(1);
 	}
 
-	if (inet_pton(AF_INET, sonicwall_lan_ip_str, sonicwall_lan_ip) != 1) {
-		printf("infile: sonicwall_lan_ip?\n");
+	if (inet_pton(AF_INET, dut_lan_ip_str, dut_lan_ip) != 1) {
+		printf("infile: dut_lan_ip?\n");
 		exit(1);
 	}
 
-	if (inet_pton(AF_INET, sonicwall_wan_ip_str, sonicwall_wan_ip) != 1) {
-		printf("infile: sonicwall_wan_ip?\n");
+	if (inet_pton(AF_INET, dut_wan_ip_str, dut_wan_ip) != 1) {
+		printf("infile: dut_wan_ip?\n");
 		exit(1);
 	}
 
@@ -937,10 +937,10 @@ check_dpdk_receive(int port_id, int queue_id)
 		case 0x0800:
 			switch (port_id) {
 			case LAN_PORT_ID:
-				packet_from_sonicwall_lan_interface(buf + 14, len - 14);
+				packet_from_dut_lan_interface(buf + 14, len - 14);
 				break;
 			case WAN_PORT_ID:
-				packet_from_sonicwall_wan_interface(buf + 14, len - 14);
+				packet_from_dut_wan_interface(buf + 14, len - 14);
 				break;
 			}
 			break;
@@ -955,7 +955,7 @@ check_dpdk_receive(int port_id, int queue_id)
 // buf points to start of ip header
 
 void
-packet_from_sonicwall_lan_interface(unsigned char *buf, int len)
+packet_from_dut_lan_interface(unsigned char *buf, int len)
 {
 	int ip_hdr_len, ip_length;
 	unsigned char *payload;
@@ -991,7 +991,7 @@ packet_from_sonicwall_lan_interface(unsigned char *buf, int len)
 // buf points to start of ip header
 
 void
-packet_from_sonicwall_wan_interface(unsigned char *buf, int len)
+packet_from_dut_wan_interface(unsigned char *buf, int len)
 {
 	int ip_hdr_len, ip_length, udp_length, dport;
 	unsigned char *payload;
@@ -1085,7 +1085,7 @@ receive_from_lan_fd()
 
 	update_checksums(bigbuf, lan_checksum_correction);
 
-	send_ipv4_packet(LAN_PORT_ID, bigbuf); // send to sonicwall
+	send_ipv4_packet(LAN_PORT_ID, bigbuf); // send to dut
 }
 
 void
@@ -1115,7 +1115,7 @@ receive_from_wan_fd()
 
 	update_checksums(bigbuf + 24, wan_checksum_correction);
 
-	handle_encryption(n); // send to sonicwall (see esp.c)
+	handle_encryption(n); // send to dut (see esp.c)
 }
 
 // for natted connections
@@ -1276,7 +1276,7 @@ send_ping_vpn_to_lan(void)
 
 	// dst
 
-	u = sonicwall_lan_ip[0] << 24 | sonicwall_lan_ip[1] << 16 | sonicwall_lan_ip[2] << 8 | sonicwall_lan_ip[3];
+	u = dut_lan_ip[0] << 24 | dut_lan_ip[1] << 16 | dut_lan_ip[2] << 8 | dut_lan_ip[3];
 	u += j + 1;
 	dst[0] = u >> 24;
 	dst[1] = u >> 16;
@@ -1331,7 +1331,7 @@ send_ping_vpn_to_lan(void)
 	buf[22] = sum >> 8;
 	buf[23] = sum;
 
-	handle_encryption(44); // send to sonicwall (see esp.c)
+	handle_encryption(44); // send to dut (see esp.c)
 
 	pings_sent++;
 }
@@ -1353,7 +1353,7 @@ send_ping_lan_to_vpn(void)
 
 	// src
 
-	u = sonicwall_lan_ip[0] << 24 | sonicwall_lan_ip[1] << 16 | sonicwall_lan_ip[2] << 8 | sonicwall_lan_ip[3];
+	u = dut_lan_ip[0] << 24 | dut_lan_ip[1] << 16 | dut_lan_ip[2] << 8 | dut_lan_ip[3];
 	u += j + 1;
 	src[0] = u >> 24;
 	src[1] = u >> 16;
@@ -1421,7 +1421,7 @@ send_ping_lan_to_vpn(void)
 	pings_sent++;
 }
 
-// sonicwall needs a vpn-to-vpn access rule for this to work
+// dut needs a vpn-to-vpn access rule for this to work
 
 void
 send_ping_vpn_to_vpn(void)
@@ -1503,7 +1503,7 @@ send_ping_vpn_to_vpn(void)
 	buf[22] = sum >> 8;
 	buf[23] = sum;
 
-	handle_encryption(44); // send to sonicwall (see esp.c)
+	handle_encryption(44); // send to dut (see esp.c)
 
 	pings_sent++;
 }

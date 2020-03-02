@@ -4,8 +4,8 @@ extern struct rte_mempool *mempool;
 extern unsigned char ether_addr[2][6];
 extern unsigned char my_lan_ip[4];
 extern unsigned char my_wan_ip[4];
-extern unsigned char sonicwall_lan_ip[4];
-extern unsigned char sonicwall_wan_ip[4];
+extern unsigned char dut_lan_ip[4];
+extern unsigned char dut_wan_ip[4];
 
 extern unsigned char local_network_start[4];
 extern unsigned char remote_network_start[4];
@@ -103,10 +103,10 @@ send_ike_packet(unsigned char *buf, int len)
 	p[28] = my_wan_ip[2];
 	p[29] = my_wan_ip[3];
 
-	p[30] = sonicwall_wan_ip[0]; // dst ip addr
-	p[31] = sonicwall_wan_ip[1];
-	p[32] = sonicwall_wan_ip[2];
-	p[33] = sonicwall_wan_ip[3];
+	p[30] = dut_wan_ip[0]; // dst ip addr
+	p[31] = dut_wan_ip[1];
+	p[32] = dut_wan_ip[2];
+	p[33] = dut_wan_ip[3];
 
 	set_ipv4_checksum(p + 14);
 
@@ -185,10 +185,10 @@ send_esp_fragment(unsigned char *buf, int len, unsigned frag)
 	p[28] = my_wan_ip[2];
 	p[29] = my_wan_ip[3];
 
-	p[30] = sonicwall_wan_ip[0]; // dst ip addr
-	p[31] = sonicwall_wan_ip[1];
-	p[32] = sonicwall_wan_ip[2];
-	p[33] = sonicwall_wan_ip[3];
+	p[30] = dut_wan_ip[0]; // dst ip addr
+	p[31] = dut_wan_ip[1];
+	p[32] = dut_wan_ip[2];
+	p[33] = dut_wan_ip[3];
 
 	set_ipv4_checksum(p + 14);
 
