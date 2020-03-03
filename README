@@ -1,5 +1,9 @@
-Vpn-tester runs on a server machine and uses Intel DPDK for simple and fast
-access to network interface cards.
+Sets up and verifies 10,000 contemporaneous VPN tunnel connections.
+
+DUT is typically a firewall or router.
+
+Vpn-tester runs on a server machine and uses Intel DPDK for raw access to
+network interface cards.
 
 Example configuration:
 
