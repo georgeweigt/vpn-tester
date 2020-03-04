@@ -4,7 +4,7 @@ DUT is typically a firewall or router.
 
 Intel DPDK is used for raw access to network interface cards.
 
-Example configuration:
+Network diagram:
 
  _________________________________
 |                                 |
@@ -26,6 +26,7 @@ Example configuration:
 |_________________________________|
 
 
+DUT configuration:
 
 Security Policy
      Site to Site
