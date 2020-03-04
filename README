@@ -2,8 +2,7 @@ Sets up and verifies 10,000 contemporaneous VPN tunnel connections.
 
 DUT is typically a firewall or router.
 
-Vpn-tester runs on a server machine and uses Intel DPDK for raw access to
-network interface cards.
+Intel DPDK is used for raw access to network interface cards.
 
 Example configuration:
 
@@ -13,7 +12,6 @@ Example configuration:
 |                                 |
 | 172.16.0.1/16     172.17.0.1/16 |
 | LAN                         WAN |
-| X18                         X19 |
 |_________________________________|
    |                           |
    |                           |
