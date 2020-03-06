@@ -1,4 +1,4 @@
-Sets up and verifies 10,000 contemporaneous VPN tunnel connections.
+Test 10,000 VPN connections.
 
 Network diagram:
 
