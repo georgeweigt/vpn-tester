@@ -1,9 +1,5 @@
 Sets up and verifies 10,000 contemporaneous VPN tunnel connections.
 
-DUT is typically a firewall or router.
-
-Intel DPDK is used for raw access to network interface cards.
-
 Network diagram:
 
  _________________________________
@@ -26,6 +22,10 @@ Network diagram:
 |_________________________________|
 
 The server simulates 10,000 VPN clients connecting to LAN network via WAN interface.
+
+Intel DPDK is used for raw access to network interface cards.
+
+DUT is typically a firewall or router.
 
 DUT configuration:
 
