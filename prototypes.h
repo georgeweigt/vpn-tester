@@ -39,6 +39,7 @@ void mmod(uint32_t *u, uint32_t *v);
 uint32_t * mpow(uint32_t *u, uint32_t *v);
 void mshr(uint32_t *u);
 int mcmp(uint32_t *u, uint32_t *v);
+uint32_t * mint(uint32_t n);
 uint32_t * mnew(int n);
 void mfree(uint32_t *u);
 uint32_t * mcopy(uint32_t *u);
