@@ -4,10 +4,10 @@
 
 // returns (a ** b) mod c
 
-unsigned *
-modpow(unsigned *a, unsigned *b, unsigned *c)
+uint32_t *
+modpow(uint32_t *a, uint32_t *b, uint32_t *c)
 {
-	unsigned *t, *y;
+	uint32_t *t, *y;
 	a = mcopy(a);
 	b = mcopy(b);
 	// y = 1
@@ -39,12 +39,12 @@ modpow(unsigned *a, unsigned *b, unsigned *c)
 
 // returns u + v
 
-unsigned *
-madd(unsigned *u, unsigned *v)
+uint32_t *
+madd(uint32_t *u, uint32_t *v)
 {
 	int i, n, nu, nv, nw;
-	unsigned long long t;
-	unsigned *w;
+	uint64_t t;
+	uint32_t *w;
 	nu = MLENGTH(u);
 	nv = MLENGTH(v);
 	if (nu > nv)
@@ -58,7 +58,7 @@ madd(unsigned *u, unsigned *v)
 		w[i] = 0;
 	t = 0;
 	for (i = 0; i < nv; i++) {
-		t += (unsigned long long) w[i] + v[i];
+		t += (uint64_t) w[i] + v[i];
 		w[i] = t;
 		t >>= 32;
 	}
@@ -73,12 +73,12 @@ madd(unsigned *u, unsigned *v)
 
 // returns u - v
 
-unsigned *
-msub(unsigned *u, unsigned *v)
+uint32_t *
+msub(uint32_t *u, uint32_t *v)
 {
 	int i, nu, nv, nw;
-	unsigned long long t;
-	unsigned *w;
+	uint64_t t;
+	uint32_t *w;
 	nu = MLENGTH(u);
 	nv = MLENGTH(v);
 	if (nu > nv)
@@ -92,14 +92,14 @@ msub(unsigned *u, unsigned *v)
 		w[i] = 0;
 	t = 0;
 	for (i = 0; i < nv; i++) {
-		t += (unsigned long long) w[i] - v[i];
+		t += (uint64_t) w[i] - v[i];
 		w[i] = t;
-		t = (long long) t >> 32; // cast to extend sign
+		t = (int64_t) t >> 32; // cast to extend sign
 	}
 	for (i = nv; i < nw; i++) {
 		t += w[i];
 		w[i] = t;
-		t = (long long) t >> 32; // cast to extend sign
+		t = (int64_t) t >> 32; // cast to extend sign
 	}
 	mnorm(w);
 	return w;
@@ -107,12 +107,12 @@ msub(unsigned *u, unsigned *v)
 
 // returns u * v
 
-unsigned *
-mmul(unsigned *u, unsigned *v)
+uint32_t *
+mmul(uint32_t *u, uint32_t *v)
 {
 	int i, j, nu, nv, nw;
-	unsigned long long t;
-	unsigned *w;
+	uint64_t t;
+	uint32_t *w;
 	nu = MLENGTH(u);
 	nv = MLENGTH(v);
 	nw = nu + nv;
@@ -122,7 +122,7 @@ mmul(unsigned *u, unsigned *v)
 	for (j = 0; j < nv; j++) {
 		t = 0;
 		for (i = 0; i < nu; i++) {
-			t += (unsigned long long) u[i] * v[j] + w[i + j];
+			t += (uint64_t) u[i] * v[j] + w[i + j];
 			w[i + j] = t;
 			t >>= 32;
 		}
@@ -134,12 +134,12 @@ mmul(unsigned *u, unsigned *v)
 
 // returns floor(u / v)
 
-unsigned *
-mdiv(unsigned *u, unsigned *v)
+uint32_t *
+mdiv(uint32_t *u, uint32_t *v)
 {
 	int i, k, nu, nv;
-	unsigned *q, qhat, *w;
-	unsigned long long a, b, t;
+	uint32_t *q, qhat, *w;
+	uint64_t a, b, t;
 	mnorm(u);
 	mnorm(v);
 	if (MLENGTH(v) == 1 && v[0] == 0)
@@ -171,7 +171,7 @@ mdiv(unsigned *u, unsigned *v)
 			// w = qhat * v
 			t = 0;
 			for (i = 0; i < nv; i++) {
-				t += (unsigned long long) qhat * v[i];
+				t += (uint64_t) qhat * v[i];
 				w[i] = t;
 				t >>= 32;
 			}
@@ -179,15 +179,15 @@ mdiv(unsigned *u, unsigned *v)
 			// u = u - w
 			t = 0;
 			for (i = k; i < nu; i++) {
-				t += (unsigned long long) u[i] - w[i - k];
+				t += (uint64_t) u[i] - w[i - k];
 				u[i] = t;
-				t = (long long) t >> 32; // cast to extend sign
+				t = (int64_t) t >> 32; // cast to extend sign
 			}
 			if (t) {
 				// u is negative, restore u
 				t = 0;
 				for (i = k; i < nu; i++) {
-					t += (unsigned long long) u[i] + w[i - k];
+					t += (uint64_t) u[i] + w[i - k];
 					u[i] = t;
 					t >>= 32;
 				}
@@ -207,11 +207,11 @@ mdiv(unsigned *u, unsigned *v)
 // u = u mod v
 
 void
-mmod(unsigned *u, unsigned *v)
+mmod(uint32_t *u, uint32_t *v)
 {
 	int i, k, nu, nv;
-	unsigned qhat, *w;
-	unsigned long long a, b, t;
+	uint32_t qhat, *w;
+	uint64_t a, b, t;
 	mnorm(u);
 	mnorm(v);
 	if (MLENGTH(v) == 1 && v[0] == 0)
@@ -237,7 +237,7 @@ mmod(unsigned *u, unsigned *v)
 			// w = qhat * v
 			t = 0;
 			for (i = 0; i < nv; i++) {
-				t += (unsigned long long) qhat * v[i];
+				t += (uint64_t) qhat * v[i];
 				w[i] = t;
 				t >>= 32;
 			}
@@ -245,15 +245,15 @@ mmod(unsigned *u, unsigned *v)
 			// u = u - w
 			t = 0;
 			for (i = k; i < nu; i++) {
-				t += (unsigned long long) u[i] - w[i - k];
+				t += (uint64_t) u[i] - w[i - k];
 				u[i] = t;
-				t = (long long) t >> 32; // cast to extend sign
+				t = (int64_t) t >> 32; // cast to extend sign
 			}
 			if (t) {
 				// u is negative, restore u
 				t = 0;
 				for (i = k; i < nu; i++) {
-					t += (unsigned long long) u[i] + w[i - k];
+					t += (uint64_t) u[i] + w[i - k];
 					u[i] = t;
 					t >>= 32;
 				}
@@ -268,10 +268,10 @@ mmod(unsigned *u, unsigned *v)
 
 // returns u ** v
 
-unsigned *
-mpow(unsigned *u, unsigned *v)
+uint32_t *
+mpow(uint32_t *u, uint32_t *v)
 {
-	unsigned *t, *w;
+	uint32_t *t, *w;
 	u = mcopy(u);
 	v = mcopy(v);
 	// w = 1
@@ -302,7 +302,7 @@ mpow(unsigned *u, unsigned *v)
 // u = u >> 1
 
 void
-mshr(unsigned *u)
+mshr(uint32_t *u)
 {
 	int i;
 	for (i = 0; i < MLENGTH(u) - 1; i++) {
@@ -317,7 +317,7 @@ mshr(unsigned *u)
 // compare u and v
 
 int
-mcmp(unsigned *u, unsigned *v)
+mcmp(uint32_t *u, uint32_t *v)
 {
 	int i;
 	mnorm(u);
@@ -335,11 +335,11 @@ mcmp(unsigned *u, unsigned *v)
 	return 0; // u = v
 }
 
-unsigned *
+uint32_t *
 mnew(int n)
 {
-	unsigned *u;
-	u = (unsigned *) malloc((n + 1) * sizeof (unsigned));
+	uint32_t *u;
+	u = (uint32_t *) malloc((n + 1) * sizeof (uint32_t));
 	if (u == NULL) {
 		printf("malloc kaput\n");
 		exit(1);
@@ -349,16 +349,16 @@ mnew(int n)
 }
 
 void
-mfree(unsigned *u)
+mfree(uint32_t *u)
 {
 	free(u - 1);
 }
 
-unsigned *
-mcopy(unsigned *u)
+uint32_t *
+mcopy(uint32_t *u)
 {
 	int i;
-	unsigned *v;
+	uint32_t *v;
 	v = mnew(MLENGTH(u));
 	for (i = 0; i < MLENGTH(u); i++)
 		v[i] = u[i];
@@ -368,7 +368,7 @@ mcopy(unsigned *u)
 // remove leading zeroes
 
 void
-mnorm(unsigned *u)
+mnorm(uint32_t *u)
 {
 	while (MLENGTH(u) > 1 && u[MLENGTH(u) - 1] == 0)
 		MLENGTH(u)--;
