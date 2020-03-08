@@ -10,9 +10,7 @@ modpow(uint32_t *a, uint32_t *b, uint32_t *c)
 	uint32_t *t, *y;
 	a = mcopy(a);
 	b = mcopy(b);
-	// y = 1
-	y = mnew(1);
-	y[0] = 1;
+	y = mint(1);
 	for (;;) {
 		if (b[0] & 1) {
 			// y = (y * a) mod c
@@ -333,6 +331,15 @@ mcmp(uint32_t *u, uint32_t *v)
 			return 1;
 	}
 	return 0; // u = v
+}
+
+uint32_t *
+mint(uint32_t n)
+{
+	uint32_t *p;
+	p = mnew(1);
+	p[0] = n;
+	return p;
 }
 
 uint32_t *
