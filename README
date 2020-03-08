@@ -46,7 +46,7 @@ Local Networks
      Any address
 
 Remote Networks
-     foobar (AO defined as 172.18.0.0/16)
+     172.18.0.0/16
 
 IKE (Phase 1) Proposal
      IKEv2 Mode
