@@ -34,7 +34,7 @@ make_dh_keys(struct sa *sa)
 	for (i = 0; i < 32; i++)
 		c[31 - i] = prime_number[i];
 	// y = (a ** b) mod c
-	y = mmodpow(a, b, c);
+	y = modpow(a, b, c);
 	// least significant byte is stored at highest address
 	for (i = 0; i < y[-1]; i++) {
 		sa->public_key_1[128 - 4 * i - 4] = y[i] >> 24;
@@ -81,7 +81,7 @@ compute_secret_key(struct sa *sa)
 	for (i = 0; i < 32; i++)
 		c[31 - i] = prime_number[i];
 	// y = (a ** b) mod c
-	y = mmodpow(a, b, c);
+	y = modpow(a, b, c);
 	// least significant byte is stored at highest address
 	for (i = 0; i < y[-1]; i++) {
 		sa->secret_key[128 - 4 * i - 4] = y[i] >> 24;
