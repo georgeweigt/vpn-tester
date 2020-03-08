@@ -5,7 +5,7 @@
 // returns (a ** b) mod c
 
 uint32_t *
-modpow(uint32_t *a, uint32_t *b, uint32_t *c)
+mmodpow(uint32_t *a, uint32_t *b, uint32_t *c)
 {
 	uint32_t *t, *y;
 	a = mcopy(a);

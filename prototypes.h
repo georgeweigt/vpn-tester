@@ -30,7 +30,7 @@ void compute_auth_r(struct sa *sa);
 void hash_id_i(struct sa *sa, unsigned *hash);
 void hash_id_r(struct sa *sa, unsigned *hash);
 // bignum.c
-uint32_t * modpow(uint32_t *a, uint32_t *b, uint32_t *c);
+uint32_t * mmodpow(uint32_t *a, uint32_t *b, uint32_t *c);
 uint32_t * madd(uint32_t *u, uint32_t *v);
 uint32_t * msub(uint32_t *u, uint32_t *v);
 uint32_t * mmul(uint32_t *u, uint32_t *v);
