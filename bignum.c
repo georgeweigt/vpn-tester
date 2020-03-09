@@ -35,6 +35,19 @@ modpow(uint32_t *a, uint32_t *b, uint32_t *c)
 	return y;
 }
 
+void
+mshr(uint32_t *u)
+{
+	int i;
+	for (i = 0; i < MLENGTH(u) - 1; i++) {
+		u[i] >>= 1;
+		if (u[i + 1] & 1)
+			u[i] |= 0x80000000;
+	}
+	u[i] >>= 1;
+	mnorm(u);
+}
+
 // returns u + v
 
 uint32_t *
@@ -295,21 +308,6 @@ mpow(uint32_t *u, uint32_t *v)
 	mfree(u);
 	mfree(v);
 	return w;
-}
-
-// u = u >> 1
-
-void
-mshr(uint32_t *u)
-{
-	int i;
-	for (i = 0; i < MLENGTH(u) - 1; i++) {
-		u[i] >>= 1;
-		if (u[i + 1] & 1)
-			u[i] |= 0x80000000;
-	}
-	u[i] >>= 1;
-	mnorm(u);
 }
 
 // compare u and v
